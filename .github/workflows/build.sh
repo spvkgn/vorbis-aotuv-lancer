@@ -91,6 +91,7 @@ get_sources vorbis-tools
     --disable-ogg123 \
     --disable-oggdec \
     --disable-ogginfo \
+    --disable-vcut \
     --disable-vorbiscomment \
     --with-ogg=$BUILD_DIR \
     --with-vorbis=$BUILD_DIR && \
