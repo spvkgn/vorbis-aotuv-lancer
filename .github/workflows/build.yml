@@ -1,0 +1,84 @@
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [gh-actions]
+
+jobs:
+  build:
+    name: build ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+          arch: [x86_64, x86, aarch64, armhf]
+          os: [ubuntu-latest]
+          branch: [latest-stable]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: vorbis-aotuv-lancer
+
+      - name: Set up ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ matrix.branch }}-${{ matrix.arch }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ matrix.branch }}-${{ matrix.arch }}-
+
+      - name: Set up Alpine Linux for ${{ matrix.arch }}
+        uses: jirutka/setup-alpine@v1
+        with:
+          arch: ${{ matrix.arch }}
+          branch: ${{ matrix.branch }}
+          packages: >
+            bash build-base ccache coreutils findutils gawk git grep tar xz
+            autoconf automake libtool pkgconf gettext jq libarchive-tools wget
+          shell-name: alpine.sh
+
+      - name: Build Vorbis inside chroot
+        id: build
+        env:
+          ARCH: ${{ matrix.arch }}
+          BRANCH: ${{ matrix.branch }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: alpine.sh {0}
+        run: |
+          bash -x vorbis-aotuv-lancer/.github/workflows/build.sh
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.arch }}
+          path: ./**/config.log
+
+      - name: Upload artifacts
+        if: steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: oggenc-${{ matrix.arch }}
+          path: ./**/oggenc*.tar.*
+
+  release:
+    needs: [build]
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          fail_on_unmatched_files: true
+          prerelease: false
+          tag_name: v1.3.7-aotuv-lancer
+          name: v1.3.7
+          body: >
+            Vorbis 1.3.7 aoTuV b6.03 with Lancer patch https://hydrogenaud.io/index.php/topic,109766.0.html
+          files: |
+            ./**/oggenc*.tar.*
